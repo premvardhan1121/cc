@@ -1,54 +1,55 @@
-import com.google.firebase.FirebaseApp;
-import com.google.firebase.FirebaseOptions;
-import com.google.firebase.database.DatabaseReference;
-import com.google.firebase.database.FirebaseDatabase;
-import com.google.auth.oauth2.GoogleCredentials;
-
-import java.io.FileInputStream;
-import java.util.HashMap;
-import java.util.Map;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.Scanner;
 
 public class AttendanceSystem {
 
+    private static final String DATABASE_URL = "https://your-project.firebaseio.com/attendance.json"; // Change this
+
     public static void main(String[] args) {
+        Scanner scanner = new Scanner(System.in);
+
+        System.out.println("Enter Student ID:");
+        String studentId = scanner.nextLine();
+
+        System.out.println("Enter Student Name:");
+        String studentName = scanner.nextLine();
+
+        String currentDate = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date());
+
+        String jsonInput = String.format(
+            "{\"studentId\":\"%s\",\"studentName\":\"%s\",\"timestamp\":\"%s\"}",
+            studentId, studentName, currentDate
+        );
+
         try {
-            // Step 1: Initialize Firebase
-            FileInputStream serviceAccount = new FileInputStream("path/to/serviceAccountKey.json");
+            URL url = new URL(DATABASE_URL);
+            HttpURLConnection connection = (HttpURLConnection) url.openConnection();
 
-            FirebaseOptions options = new FirebaseOptions.Builder()
-                    .setCredentials(GoogleCredentials.fromStream(serviceAccount))
-                    .setDatabaseUrl("https://<your-database-name>.firebaseio.com/")
-                    .build();
+            connection.setRequestMethod("POST");
+            connection.setRequestProperty("Content-Type", "application/json; utf-8");
+            connection.setDoOutput(true);
 
-            FirebaseApp.initializeApp(options);
+            try (OutputStream os = connection.getOutputStream()) {
+                byte[] input = jsonInput.getBytes(StandardCharsets.UTF_8);
+                os.write(input, 0, input.length);
+            }
 
-            FirebaseDatabase database = FirebaseDatabase.getInstance();
-            DatabaseReference attendanceRef = database.getReference("attendance");
-
-            // Step 2: Take input
-            Scanner scanner = new Scanner(System.in);
-            System.out.print("Enter Student ID: ");
-            String studentId = scanner.nextLine();
-            System.out.print("Enter Name: ");
-            String name = scanner.nextLine();
-            System.out.print("Enter Status (Present/Absent): ");
-            String status = scanner.nextLine();
-
-            // Step 3: Create data entry
-            Map<String, Object> data = new HashMap<>();
-            data.put("name", name);
-            data.put("status", status);
-            data.put("timestamp", System.currentTimeMillis());
-
-            // Step 4: Upload to Firebase
-            attendanceRef.child(studentId).setValueAsync(data);
-
-            System.out.println("✅ Attendance recorded successfully to cloud.");
+            int responseCode = connection.getResponseCode();
+            if (responseCode == 200 || responseCode == 201) {
+                System.out.println("Attendance recorded successfully.");
+            } else {
+                System.out.println("Error occurred. HTTP response code: " + responseCode);
+            }
 
         } catch (Exception e) {
-            e.printStackTrace();
-            System.out.println("❌ Failed to record attendance.");
+            System.out.println("Error: " + e.getMessage());
         }
+
+        scanner.close();
     }
 }
