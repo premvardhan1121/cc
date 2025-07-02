@@ -1,75 +1,86 @@
-import com.google.auth.oauth2.GoogleCredentials;
-import com.google.firebase.FirebaseApp;
-import com.google.firebase.FirebaseOptions;
-import com.google.firebase.database.DatabaseReference;
-import com.google.firebase.database.FirebaseDatabase;
-import com.razorpay.*;
-
-import org.json.JSONObject;
-
-import java.io.FileInputStream;
-import java.util.HashMap;
-import java.util.Map;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.util.Scanner;
 
 public class BusTicketingSystem {
 
+    private static final String DATABASE_URL = "https://your-project-id.firebaseio.com/tickets.json"; // Replace with your Firebase DB
+
     public static void main(String[] args) {
+        Scanner scanner = new Scanner(System.in);
+
+        System.out.println("Enter Passenger Name:");
+        String name = scanner.nextLine();
+
+        System.out.println("Enter Bus Route (e.g., CityA to CityB):");
+        String route = scanner.nextLine();
+
+        System.out.println("Enter Number of Tickets:");
+        int tickets = scanner.nextInt();
+
+        int costPerTicket = 100;
+        int totalAmount = tickets * costPerTicket;
+
+        System.out.println("Total amount to pay: ₹" + totalAmount);
+        System.out.println("Proceed with payment? (yes/no):");
+        scanner.nextLine(); // Consume newline
+        String confirm = scanner.nextLine();
+
+        if (confirm.equalsIgnoreCase("yes")) {
+            boolean paymentSuccess = processPayment(totalAmount);
+            if (paymentSuccess) {
+                System.out.println("Payment Successful ✅");
+                saveToCloud(name, route, tickets, totalAmount);
+            } else {
+                System.out.println("Payment Failed ❌");
+            }
+        } else {
+            System.out.println("Booking cancelled.");
+        }
+
+        scanner.close();
+    }
+
+    private static boolean processPayment(int amount) {
+        // Simulate payment gateway logic (always returns success in this example)
+        System.out.println("Processing payment of ₹" + amount + "...");
         try {
-            // 1. Initialize Firebase
-            FileInputStream serviceAccount = new FileInputStream("path/to/serviceAccountKey.json");
-            FirebaseOptions options = new FirebaseOptions.Builder()
-                    .setCredentials(GoogleCredentials.fromStream(serviceAccount))
-                    .setDatabaseUrl("https://<your-database-name>.firebaseio.com/")
-                    .build();
-            FirebaseApp.initializeApp(options);
-            DatabaseReference dbRef = FirebaseDatabase.getInstance().getReference("busTickets");
+            Thread.sleep(2000); // simulate delay
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+        return true; // Simulate success
+    }
 
-            // 2. Input Booking Details
-            Scanner scanner = new Scanner(System.in);
-            System.out.print("Enter Passenger Name: ");
-            String name = scanner.nextLine();
-            System.out.print("Enter Source: ");
-            String source = scanner.nextLine();
-            System.out.print("Enter Destination: ");
-            String dest = scanner.nextLine();
-            System.out.print("Enter Fare (in INR): ");
-            int amount = scanner.nextInt(); // in rupees
+    private static void saveToCloud(String name, String route, int tickets, int amount) {
+        String jsonInput = String.format(
+            "{\"name\":\"%s\",\"route\":\"%s\",\"tickets\":%d,\"amount\":%d}",
+            name, route, tickets, amount
+        );
 
-            // 3. Generate Razorpay Order
-            RazorpayClient razorpay = new RazorpayClient("rzp_test_YourKeyID", "YourKeySecret");
-            JSONObject orderRequest = new JSONObject();
-            orderRequest.put("amount", amount * 100); // Amount in paise
-            orderRequest.put("currency", "INR");
-            orderRequest.put("receipt", "txn_123456");
+        try {
+            URL url = new URL(DATABASE_URL);
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("POST");
+            conn.setRequestProperty("Content-Type", "application/json; utf-8");
+            conn.setDoOutput(true);
 
-            Order order = razorpay.Orders.create(orderRequest);
-            System.out.println("🧾 Razorpay Order Created: " + order.get("id"));
-
-            // 4. Mock Payment Success (for demo; real flow happens in frontend)
-            System.out.print("Confirm payment? (yes/no): ");
-            String confirm = scanner.next();
-            if (!confirm.equalsIgnoreCase("yes")) {
-                System.out.println("❌ Payment Cancelled.");
-                return;
+            try (OutputStream os = conn.getOutputStream()) {
+                byte[] input = jsonInput.getBytes(StandardCharsets.UTF_8);
+                os.write(input, 0, input.length);
             }
 
-            // 5. Store Booking in Firebase
-            String ticketId = "TICKET_" + System.currentTimeMillis();
-            Map<String, Object> ticket = new HashMap<>();
-            ticket.put("name", name);
-            ticket.put("source", source);
-            ticket.put("destination", dest);
-            ticket.put("amount", amount);
-            ticket.put("paymentId", order.get("id"));
-            ticket.put("status", "Confirmed");
-
-            dbRef.child(ticketId).setValueAsync(ticket);
-            System.out.println("✅ Booking Confirmed! Ticket ID: " + ticketId);
+            int responseCode = conn.getResponseCode();
+            if (responseCode == 200 || responseCode == 201) {
+                System.out.println("Ticket booked and saved to cloud database.");
+            } else {
+                System.out.println("Failed to save to cloud. Response Code: " + responseCode);
+            }
 
         } catch (Exception e) {
-            e.printStackTrace();
-            System.out.println("❌ Something went wrong.");
+            System.out.println("Error saving to cloud: " + e.getMessage());
         }
     }
 }
