@@ -1,0 +1,75 @@
+import com.google.auth.oauth2.GoogleCredentials;
+import com.google.firebase.FirebaseApp;
+import com.google.firebase.FirebaseOptions;
+import com.google.firebase.database.DatabaseReference;
+import com.google.firebase.database.FirebaseDatabase;
+import com.razorpay.*;
+
+import org.json.JSONObject;
+
+import java.io.FileInputStream;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Scanner;
+
+public class BusTicketingSystem {
+
+    public static void main(String[] args) {
+        try {
+            // 1. Initialize Firebase
+            FileInputStream serviceAccount = new FileInputStream("path/to/serviceAccountKey.json");
+            FirebaseOptions options = new FirebaseOptions.Builder()
+                    .setCredentials(GoogleCredentials.fromStream(serviceAccount))
+                    .setDatabaseUrl("https://<your-database-name>.firebaseio.com/")
+                    .build();
+            FirebaseApp.initializeApp(options);
+            DatabaseReference dbRef = FirebaseDatabase.getInstance().getReference("busTickets");
+
+            // 2. Input Booking Details
+            Scanner scanner = new Scanner(System.in);
+            System.out.print("Enter Passenger Name: ");
+            String name = scanner.nextLine();
+            System.out.print("Enter Source: ");
+            String source = scanner.nextLine();
+            System.out.print("Enter Destination: ");
+            String dest = scanner.nextLine();
+            System.out.print("Enter Fare (in INR): ");
+            int amount = scanner.nextInt(); // in rupees
+
+            // 3. Generate Razorpay Order
+            RazorpayClient razorpay = new RazorpayClient("rzp_test_YourKeyID", "YourKeySecret");
+            JSONObject orderRequest = new JSONObject();
+            orderRequest.put("amount", amount * 100); // Amount in paise
+            orderRequest.put("currency", "INR");
+            orderRequest.put("receipt", "txn_123456");
+
+            Order order = razorpay.Orders.create(orderRequest);
+            System.out.println("🧾 Razorpay Order Created: " + order.get("id"));
+
+            // 4. Mock Payment Success (for demo; real flow happens in frontend)
+            System.out.print("Confirm payment? (yes/no): ");
+            String confirm = scanner.next();
+            if (!confirm.equalsIgnoreCase("yes")) {
+                System.out.println("❌ Payment Cancelled.");
+                return;
+            }
+
+            // 5. Store Booking in Firebase
+            String ticketId = "TICKET_" + System.currentTimeMillis();
+            Map<String, Object> ticket = new HashMap<>();
+            ticket.put("name", name);
+            ticket.put("source", source);
+            ticket.put("destination", dest);
+            ticket.put("amount", amount);
+            ticket.put("paymentId", order.get("id"));
+            ticket.put("status", "Confirmed");
+
+            dbRef.child(ticketId).setValueAsync(ticket);
+            System.out.println("✅ Booking Confirmed! Ticket ID: " + ticketId);
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            System.out.println("❌ Something went wrong.");
+        }
+    }
+}
